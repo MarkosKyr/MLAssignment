@@ -1,0 +1,109 @@
+###Predicting Exercise 'style' using Random Forests
+
+#####INTRODUCTION
+To build the machine learning algorithm we will use the data gracefully provided by Ugulino et al. (2012). The team acquired a plethora of data for Human Activity Recognition (HAR), which aims to identify how well someone performs a certain activity -in this case exercising. Six pariticpants were used and data was acquired from accelerometers on the belt, forearm, arm, and dumbell.
+
+#####EXPLORATORY ANALYSIS and a SIMPLE MODEL
+Both the training set, and a small test set (made up of 20 observations) were provided to us for the course. The first step, before engaging in exploratory data analysis or building the predictive algoirthm was to explore the dataset itself. 
+
+```{r}
+library(caret)
+set.seed(333)
+
+myData = read.csv("pml-training.csv",header = T)
+View(myData) ##Works fine in RStudio
+
+```
+Although there are 160 variables (one dependent, six descriptive, and about 152 independent variables) We see that a lot of variables have missing values. In fact, there are only around 26 variables that do not have (or do not appear to have missing values). It would be unreasonable to use these variables in the model, since it's likely that our 20 test set observations may also be missing values (in fact looking at the test set as well confirms this hypothesis). Since we are trying to predict a categorical variable with five levels, we won't be using general linear models, which are more suited for continuous dependent variables, or logistic regression which is suitable for binary dependent variables. It's important to note that although random forests and e.g., bagging are more sophisticated algorithms, GLMs perform really well in most cases, and would have been my first choice had the dependent variable been continuous. Furthermore, plotting the data reveals a non-linear pattern (see Fig 1. for a sample)
+
+```{r}
+library(ggplot2)
+## Partition the data for cross-validation (although in reality we don't really need to do this for random forests)
+inTrain = createDataPartition(y = myData$classe, p = 0.7, list = F)
+training = myData[inTrain,]
+testing = myData[-inTrain,]
+
+qplot(training$pitch_forearm, training$pitch_belt, colour=training$classe, data = training)
+
+```
+
+Before training a complex algoirthm like a random forest, it makes sense to build a simpler, faster algorithm using classification trees and checking its accuracy, as well as misclassification error.
+
+
+```{r}
+## Make all the independent variables numeric (classe is variable 160)
+for (i in 4:159) {myData[,i] = as.numeric(myData[,i])}
+
+
+tempFit = train(classe ~ roll_belt + pitch_belt + yaw_belt + total_accel_belt + gyros_belt_x + gyros_belt_y + gyros_belt_z + 
+                    accel_belt_x + accel_belt_y + accel_belt_z + magnet_belt_x + magnet_belt_y + magnet_belt_z + roll_arm + 
+                    pitch_arm + yaw_arm + total_accel_arm + gyros_arm_x + gyros_arm_y + gyros_arm_z + accel_arm_x + accel_arm_y + 
+                    accel_arm_z + magnet_arm_x + magnet_arm_y + magnet_arm_z, data = training, method = "rpart")
+
+missClass = function(values,prediction){sum(prediction  != values)/length(values)} ## Function to look at the missclassification error rate
+
+# In-sample error
+predictionTrain = predict(tempFit, newdata = training)
+missClass(training$classe, predictionTrain)
+
+# Out-of-sample error
+predictionTest = predict(tempFit, newdata = testing) 
+missClass(testing$classe, predictionTest)
+
+#Accuracy
+confusionMatrix(testing$classe, predictionTest)
+
+```
+The training set misclassification and the testing set misclassification are very high, and the accuracy very low, suggesting that, unfortunately, our 'quick and dirty' model does not work well with this data.
+
+
+#####RANDOM FOREST
+Training the random forest took a very long time (approximately 3 hours on a Quad-core PC with 4GB of ram). Unfortunately running it again to generate the HTML file is impracticle, therefore, the code and output will be added as text.
+
+
+    modFit = train(classe ~ roll_belt + pitch_belt + yaw_belt + total_accel_belt + gyros_belt_x + gyros_belt_y + gyros_belt_z + 
+                   accel_belt_x + accel_belt_y + accel_belt_z + magnet_belt_x + magnet_belt_y + magnet_belt_z + roll_arm + 
+                   pitch_arm + yaw_arm + total_accel_arm + gyros_arm_x + gyros_arm_y + gyros_arm_z + accel_arm_x + accel_arm_y + 
+                   accel_arm_z + magnet_arm_x + magnet_arm_y + magnet_arm_z, data = training, method = "rf", prox = T)
+
+
+> In-sample error
+
+    predictionTrain = predict(modFit, newdata = training)
+    missClass(training$classe, predictionTrain)
+    [1] 0
+
+> Out-of-sample error
+
+    predictionTest = predict(modFit, newdata = testing) 
+    missClass(testing$classe, predictionTest)
+
+    [1] 0.01988105
+
+> Accuracy
+
+    confusionMatrix(testing$classe, predictionTest)
+
+    Overall Statistics
+                                          
+               Accuracy : 0.9801          
+                 95% CI : (0.9762, 0.9835)
+    No Information Rate : 0.2863          
+    P-Value [Acc > NIR] : < 2.2e-16       
+                                          
+                  Kappa : 0.9748          
+
+
+The difference between simple trees and the random forest in terms of out-of-sample error and accuracy is astonishing. The algorithm performed really well with the 20 observations, correctly predicting all of the exercise classes for each observation. 
+
+
+#####SUMMARY AND FUTURE WORK
+The algorithm was very accurate, although it performed very poorly in terms of computational time. The issue could have been addressed by (1) dimension reduction using principle component analysis. In fact, many of the variables correlate highly with each other, and (2) decreasing the number of trees from the default (which is around 70) to perhaps half of that. For a wearable device, assuming the random forest is being trained remotely (i.e., not on the processor of the device itself) and the updated model is being sent as an update periodically (let's say every week) this could become a problem when many devices are using up computational resources in order to update their learning models. 
+
+#####REFERENCES
+
+Ugulino, W.; Cardador, D.; Vega, K.; Velloso, E.; Milidiu, R.; Fuks, H. Wearable Computing: Accelerometers' Data Classification of Body Postures and Movements. Proceedings of 21st Brazilian Symposium on Artificial Intelligence. Advances in Artificial Intelligence - SBIA 2012. In: Lecture Notes in Computer Science. , pp. 52-61. Curitiba, PR: Springer Berlin / Heidelberg, 2012. ISBN 978-3-642-34458-9. DOI: 10.1007/978-3-642-34459-6_6.
+
+
+
+
